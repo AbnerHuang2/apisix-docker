@@ -23,9 +23,6 @@ apisix:
   control:
     ip: "0.0.0.0"
     port: 9092
-  
-  # 自定义插件
-  # extra_lua_path: "/usr/local/apisix/apisix/plugins/test-plugin.lua"
 
 deployment:
   admin:
@@ -141,3 +138,4 @@ plugins:                          # plugin list (sorted by priority)
   - ext-plugin-post-req            # priority: -3000
   - ext-plugin-post-resp           # priority: -4000
   - test-plugin
+  - redirect-by-conf

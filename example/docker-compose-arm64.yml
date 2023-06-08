@@ -35,6 +35,7 @@ services:
     volumes:
       - ./apisix_conf/config.yaml:/usr/local/apisix/conf/config.yaml:ro
       - ./my_plugins/test-plugin.lua:/usr/local/apisix/apisix/plugins/test-plugin.lua
+      - ./my_plugins/redirect-by-conf.lua:/usr/local/apisix/apisix/plugins/redirect-by-conf.lua
     depends_on:
       - etcd
     ports:

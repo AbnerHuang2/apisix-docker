@@ -111,3 +111,4 @@ plugins:                          # plugin list (sorted in alphabetical order)
   - server-info
   - traffic-split
   - test-plugin
+  - redirect-by-conf
