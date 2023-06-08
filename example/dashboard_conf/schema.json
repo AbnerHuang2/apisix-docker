@@ -3612,17 +3612,45 @@
             "priority": 405
         },
         "test-plugin": {
+            "priority": 12,
             "schema": {
-                "required": [
-                    "header"
-                ],
-                "type": "object",
                 "properties": {
+                    "clusters": {
+                        "items": {
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "集群id"
+                                },
+                                "host": {
+                                    "type": "string",
+                                    "description": "集群域名"
+                                },
+                                "desc": {
+                                    "type": "string",
+                                    "description": "集群描述"
+                                },
+                                "tag": {
+                                    "type": "string",
+                                    "description": "集群标志"
+                                }
+                            },
+                            "type": "object"
+                        },
+                        "type": "array"
+                    },
                     "_meta": {
                         "properties": {
                             "filter": {
                                 "type": "array",
                                 "description": "filter determines whether the plugin needs to be executed at runtime"
+                            },
+                            "priority": {
+                                "type": "integer",
+                                "description": "priority of plugins by customized order"
+                            },
+                            "disable": {
+                                "type": "boolean"
                             },
                             "error_response": {
                                 "oneOf": [
@@ -3633,13 +3661,6 @@
                                         "type": "object"
                                     }
                                 ]
-                            },
-                            "disable": {
-                                "type": "boolean"
-                            },
-                            "priority": {
-                                "type": "integer",
-                                "description": "priority of plugins by customized order"
                             }
                         },
                         "type": "object"
@@ -3649,10 +3670,14 @@
                         "description": "header to check."
                     }
                 },
-                "$comment": "this is a mark for our injected plugin schema"
+                "required": [
+                    "header",
+                    "clusters"
+                ],
+                "$comment": "this is a mark for our injected plugin schema",
+                "type": "object"
             },
-            "version": 0.1,
-            "priority": 12
+            "version": 0.1
         },
         "rocketmq-logger": {
             "priority": 402,
