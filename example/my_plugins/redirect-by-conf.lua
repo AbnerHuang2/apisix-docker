@@ -15,17 +15,12 @@
 -- limitations under the License.
 --
 local core = require("apisix.core")
+local redis_new = require("resty.redis").new
 
 local tab_insert = table.insert
 local tab_concat = table.concat
 local re_gmatch = ngx.re.gmatch
 local ipairs = ipairs
-
-
--- 路由判断
-_IDC_NUM_TABLE = { "2", "4", "6", "8", "10", "12" }
-_IDC_DESC_TABLE = { "阿里云", "私有云", "澳洲AUS", "欧洲", "新加坡", "美西" }
-_IDC_TAG_TABLE = { "mdc-ali", "mdc-private", "mdc-aus", "mdc-eu", "mdc-sgp", "mdc-usa" }
 
 local schema = {
     type = "object",
@@ -77,7 +72,7 @@ function _M.check_schema(conf)
     return core.schema.check(schema, conf)
 end
 
-
+-- 从配置中获取集群信息
 local function pair_idc(_route_num, idc_array)
     for _idx, _idc_info in pairs(idc_array) do
         if tonumber(_idc_info.id) == _route_num then
@@ -147,15 +142,117 @@ local function concat_new_uri(uri, ctx)
     return tab_concat(tmp, "")
 end
 
+-- 十进制数字转二进制字符串
+function _byte2bin(n)
+    local t = {}
+    for i=7,0,-1 do
+        t[#t+1] = math.floor(n / 2^i)
+        n = n % 2^i
+    end
+    return table.concat(t)
+end
+
+-- 初始化redis客户端
+local function redis_cli(conf)
+    local red = redis_new()
+    local timeout = conf.redis_timeout or 1000    -- 1sec
+
+    red:set_timeouts(timeout, timeout, timeout)
+
+    local sock_opts = {
+        ssl = conf.redis_ssl,
+        ssl_verify = conf.redis_ssl_verify
+    }
+
+    local ok, err = red:connect(conf.redis_host, conf.redis_port or 6379, sock_opts)
+    if not ok then
+        return false, err
+    end
+
+    local count
+    count, err = red:get_reused_times()
+    if 0 == count then
+        if conf.redis_password and conf.redis_password ~= '' then
+            local ok, err
+            if conf.redis_username then
+                ok, err = red:auth(conf.redis_username, conf.redis_password)
+            else
+                ok, err = red:auth(conf.redis_password)
+            end
+            if not ok then
+                return nil, err
+            end
+        end
+
+        -- select db
+        if conf.redis_database ~= 0 then
+            local ok, err = red:select(conf.redis_database)
+            if not ok then
+                return false, "failed to change redis db, err: " .. err
+            end
+        end
+    elseif err then
+        -- core.log.info(" err: ", err)
+        return nil, err
+    end
+    return red, nil
+end
+
+function _redis_get(key)
+    local red = redis_new()
+
+    red:set_timeouts(1000, 1000, 1000) -- 1 sec
+
+    local ok, err = red:connect("172.30.0.9", 6379)
+
+    if not ok then
+        ngx.say("failed to connect: ", err)
+        return
+    end
+
+    local res, err = red:get(key)
+    if not res then
+        ngx.say("failed to get " .. key .. ": ", err)
+        return
+    end
+
+    if res == ngx.null then
+        print(key .. " not found.")
+        return
+    end
+
+    red:set_keepalive(10000, 100)
+
+    return res
+
+end
+
 function _M.rewrite(conf, ctx)
     local token = core.request.header(ctx, conf.header)
+    local _IDX = 1;
     if not token then
-        -- uri not login
-        return 401, 'not login'
+        if string.match(ctx.var.uri,"/login") then
+            local email = core.request.header(ctx, "email")
+            if not email then
+                return 401, 'email not found'
+            end
+            local res = _redis_get("mdc_email:" .. email);
+            if not res then
+                return 500, 'email not found'
+            end
+            _IDX = tonumber(res)
+
+        else
+            -- uri not login
+            return 401, 'not login'
+        end
+    else
+        local _SELF_IDC_NUM = string.sub(token, 1, 1)
+        core.log.error("_SELF_IDC_NUM: ", _SELF_IDC_NUM)
+        _IDX = tonumber(_SELF_IDC_NUM)
     end
-    local _SELF_IDC_NUM = string.sub(token, 1, 1)
-    core.log.error("_SELF_IDC_NUM: ", _SELF_IDC_NUM)
-    local idc_info = pair_idc(tonumber(_SELF_IDC_NUM), conf.clusters)
+
+    local idc_info = pair_idc(_IDX, conf.clusters)
     core.log.error("idc_info: ", idc_info.name)
 
     local uri = idc_info.host
@@ -167,13 +264,17 @@ function _M.rewrite(conf, ctx)
         return 500
     end
 
-    local new_uri_with_args = new_uri .. ctx.var.uri .. "?" ..  ctx.var.args
+    local new_uri_with_args = new_uri .. ctx.var.uri
+    if(ctx.var.args ~= nil) then
+        new_uri_with_args = new_uri_with_args .. "?" .. ctx.var.args
+    end
     core.log.error("new_uri: ", new_uri_with_args )
 
     core.response.set_header("Location", new_uri_with_args)
     return 301
 
 end
+
 
 
 return _M
